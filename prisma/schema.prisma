@@ -1,0 +1,202 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── ПОЛЬЗОВАТЕЛИ ──────────────────────────────
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(RECRUITER)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  candidates    Candidate[]
+  vacancies     Vacancy[]     @relation("VacancyOwner")
+  teamVacancies Vacancy[]     @relation("VacancyTeam")
+  applications  Application[]
+  notes         Note[]
+  clients       Client[]
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  RECRUITER
+}
+
+// ── КЛИЕНТЫ (КОМПАНИИ) ────────────────────────
+model Client {
+  id           String       @id @default(cuid())
+  name         String
+  industry     String?
+  website      String?
+  description  String?
+  contactName  String?
+  contactEmail String?
+  contactPhone String?
+  status       ClientStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  recruiterId String?
+  recruiter   User?    @relation(fields: [recruiterId], references: [id])
+
+  vacancies Vacancy[]
+  notes     Note[]
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  PROSPECT
+}
+
+// ── ВАКАНСИИ ──────────────────────────────────
+model Vacancy {
+  id           String        @id @default(cuid())
+  title        String
+  description  String?
+  requirements String?
+  salaryFrom   Int?
+  salaryTo     Int?
+  currency     String        @default("RUB")
+  location     String?
+  remote       Boolean       @default(false)
+  status       VacancyStatus @default(OPEN)
+  priority     Priority      @default(MEDIUM)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  clientId       String
+  client         Client @relation(fields: [clientId], references: [id])
+  recruiterId    String
+  recruiter      User   @relation("VacancyOwner", fields: [recruiterId], references: [id])
+  teamRecruiters User[] @relation("VacancyTeam")
+
+  applications Application[]
+  notes        Note[]
+}
+
+enum VacancyStatus {
+  OPEN
+  ON_HOLD
+  CLOSED
+  FILLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// ── КАНДИДАТЫ ─────────────────────────────────
+model Candidate {
+  id          String          @id @default(cuid())
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String?
+  location    String?
+  resumeUrl   String?
+  linkedinUrl String?
+  skills      String[]
+  experience       Int?
+  currentPosition  String?
+  salary           Int?
+  currency    String          @default("RUB")
+  status      CandidateStatus @default(ACTIVE)
+  source      String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  recruiterId String
+  recruiter   User   @relation(fields: [recruiterId], references: [id])
+
+  applications Application[]
+  notes        Note[]
+  files        CandidateFile[]
+}
+
+model CandidateFile {
+  id          String    @id @default(cuid())
+  fileName    String
+  fileUrl     String
+  fileSize    Int
+  fileType    String
+  createdAt   DateTime  @default(now())
+
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+}
+
+enum CandidateStatus {
+  ACTIVE
+  INACTIVE
+  HIRED
+  BLACKLISTED
+}
+
+// ── ЗАЯВКИ (ВОРОНКА) ──────────────────────────
+model Application {
+  id        String             @id @default(cuid())
+  stage     PipelineStage      @default(NEW)
+  result    ApplicationResult?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id])
+  vacancyId   String
+  vacancy     Vacancy   @relation(fields: [vacancyId], references: [id])
+  recruiterId String
+  recruiter   User      @relation(fields: [recruiterId], references: [id])
+
+  notes Note[]
+
+  @@unique([candidateId, vacancyId])
+}
+
+enum PipelineStage {
+  NEW
+  SCREENING
+  INTERVIEW
+  TEST_TASK
+  OFFER
+  HIRED
+  REJECTED
+}
+
+enum ApplicationResult {
+  OFFER_ACCEPTED
+  OFFER_DECLINED
+  REJECTED_BY_CLIENT
+  REJECTED_BY_CANDIDATE
+  GHOSTED
+}
+
+// ── ЗАМЕТКИ ───────────────────────────────────
+model Note {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+
+  authorId      String
+  author        User         @relation(fields: [authorId], references: [id])
+  candidateId   String?
+  candidate     Candidate?   @relation(fields: [candidateId], references: [id])
+  vacancyId     String?
+  vacancy       Vacancy?     @relation(fields: [vacancyId], references: [id])
+  clientId      String?
+  client        Client?      @relation(fields: [clientId], references: [id])
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id])
+}
