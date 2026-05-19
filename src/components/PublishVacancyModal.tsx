@@ -13,7 +13,6 @@ type Props = {
   recruiterName: string | null;
   recruiterEmail: string | null;
   recruiterTelegram: string | null;
-  onClose: () => void;
 };
 
 type Platform = "hh" | "avito" | "telegram";

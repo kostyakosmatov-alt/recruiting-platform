@@ -11,7 +11,7 @@ type Candidate = {
   email: string | null; phone: string | null; experience: number | null;
 };
 type Application = { id: string; stage: string; createdAt: string; candidate: Candidate };
-type Recruiter = { id: string; name: string; email?: string; telegramUsername?: string | null };
+type Recruiter = { id: string; name: string; email?: string; telegramUsername?: string | null; role?: string };
 type Vacancy = {
   id: string; title: string; description: string | null;
   requirements: string | null; location: string | null; remote: boolean;
