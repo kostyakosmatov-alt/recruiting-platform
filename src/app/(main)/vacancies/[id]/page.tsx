@@ -1,19 +1,23 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AddCandidateModal from "@/components/AddCandidateModal";
+import EditVacancyModal from "@/components/EditVacancyModal";
+import PublishVacancyModal from "@/components/PublishVacancyModal";
 
 type Candidate = {
   id: string; firstName: string; lastName: string;
   email: string | null; phone: string | null; experience: number | null;
 };
 type Application = { id: string; stage: string; createdAt: string; candidate: Candidate };
-type Recruiter = { id: string; name: string };
+type Recruiter = { id: string; name: string; email?: string; telegramUsername?: string | null };
 type Vacancy = {
   id: string; title: string; description: string | null;
+  requirements: string | null; location: string | null; remote: boolean;
   status: string; priority: string;
   salaryFrom: number | null; salaryTo: number | null;
+  commissionType: string; commissionValue: number;
   client: { id: string; name: string };
   recruiter: Recruiter | null;
   teamRecruiters: Recruiter[];
@@ -100,6 +104,7 @@ function TeamSection({ vacancyId, recruiter, team, onUpdate }: {
   const [allUsers, setAllUsers] = useState<Recruiter[]>([]);
   const [addId, setAddId] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
+  const selectRef = useRef<HTMLSelectElement>(null);
 
   useEffect(() => {
     fetch("/api/users").then((r) => r.json()).then(setAllUsers).catch(() => {});
@@ -148,7 +153,9 @@ function TeamSection({ vacancyId, recruiter, team, onUpdate }: {
     setSaving(null);
   }
 
-  const notInTeam = allUsers.filter((u) => !team.some((t) => t.id === u.id));
+  const adminIds = new Set(allUsers.filter((u) => u.role === "ADMIN").map((u) => u.id));
+  const visibleTeam = team.filter((m) => !adminIds.has(m.id));
+  const notInTeam = allUsers.filter((u) => u.role !== "ADMIN" && !team.some((t) => t.id === u.id));
 
   return (
     <div className="bg-[#151923] border border-white/5 rounded-xl p-5">
@@ -174,7 +181,7 @@ function TeamSection({ vacancyId, recruiter, team, onUpdate }: {
 
       {/* Team list */}
       <div className="space-y-1.5 mb-4">
-        {team.map((m) => (
+        {visibleTeam.map((m) => (
           <div key={m.id} className="flex items-center justify-between bg-[#0f1117] rounded-lg px-3 py-2">
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-full bg-[#BA7517]/20 flex items-center justify-center text-xs text-[#EF9F27] font-medium shrink-0">
@@ -196,7 +203,7 @@ function TeamSection({ vacancyId, recruiter, team, onUpdate }: {
             )}
           </div>
         ))}
-        {team.length === 0 && (
+        {visibleTeam.length === 0 && (
           <p className="text-xs text-slate-600 py-1">Нет участников</p>
         )}
       </div>
@@ -205,6 +212,7 @@ function TeamSection({ vacancyId, recruiter, team, onUpdate }: {
       {isAdmin && notInTeam.length > 0 && (
         <div className="flex gap-2">
           <select
+            ref={selectRef}
             value={addId}
             onChange={(e) => setAddId(e.target.value)}
             className="flex-1 bg-[#0f1117] border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#BA7517] transition-colors appearance-none"
@@ -213,11 +221,17 @@ function TeamSection({ vacancyId, recruiter, team, onUpdate }: {
             {notInTeam.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
           <button
-            onClick={addMember}
-            disabled={!addId || saving === "add"}
-            className="bg-[#BA7517] hover:bg-[#a36414] disabled:opacity-40 text-white text-sm px-3 py-2 rounded-lg transition-colors"
+            onClick={() => {
+              if (!addId) {
+                selectRef.current?.showPicker?.() ?? selectRef.current?.focus();
+              } else {
+                addMember();
+              }
+            }}
+            disabled={saving === "add"}
+            className="bg-[#BA7517] hover:bg-[#a36414] disabled:opacity-50 text-white text-sm px-3 py-2 rounded-lg transition-colors"
           >
-            +
+            {saving === "add" ? "..." : "+"}
           </button>
         </div>
       )}
@@ -233,6 +247,8 @@ export default function VacancyDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeStage, setActiveStage] = useState("NEW");
   const [showModal, setShowModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showPublishModal, setShowPublishModal] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -272,25 +288,60 @@ export default function VacancyDetailPage() {
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
               <h1 className="text-2xl font-semibold text-white">{vacancy.title}</h1>
-              <span className={`inline-flex text-xs px-2.5 py-1 rounded-full font-medium ${STATUS_COLOR[vacancy.status]}`}>
-                {STATUS_LABEL[vacancy.status]}
-              </span>
+              <select
+                value={vacancy.status}
+                onChange={async (e) => {
+                  const status = e.target.value;
+                  setVacancy((v) => v ? { ...v, status } : v);
+                  await fetch(`/api/vacancies/${id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ status }),
+                  });
+                }}
+                style={{ WebkitAppearance: "none", MozAppearance: "none", appearance: "none", textAlignLast: "center" }}
+                className={`text-xs font-medium px-3 py-1 rounded-full border-0 cursor-pointer focus:outline-none ${STATUS_COLOR[vacancy.status]}`}
+              >
+                {Object.entries(STATUS_LABEL).map(([val, label]) => (
+                  <option key={val} value={val} className="bg-[#151923] text-white">{label}</option>
+                ))}
+              </select>
             </div>
             <div className="flex items-center gap-4 text-sm text-slate-400">
               <span>{vacancy.client.name}</span>
               {salary && <span className="text-slate-300">{salary}</span>}
               <span className={`font-medium ${PRIORITY_COLOR[vacancy.priority]}`}>{PRIORITY_LABEL[vacancy.priority]} приоритет</span>
             </div>
-            {vacancy.description && <p className="mt-3 text-sm text-slate-400 max-w-xl">{vacancy.description}</p>}
+            {vacancy.description && (
+              <div style={{ maxHeight: 96, overflowY: "auto" }} className="mt-3 max-w-xl text-sm text-slate-400 pr-2">
+                {vacancy.description}
+              </div>
+            )}
           </div>
 
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-[#BA7517] hover:bg-[#a36414] text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors shrink-0"
-          >
-            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
-            Добавить кандидата
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setShowEditModal(true)}
+              className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+            >
+              <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+              Редактировать
+            </button>
+            <button
+              onClick={() => setShowPublishModal(true)}
+              className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+            >
+              <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+              Опубликовать
+            </button>
+            <button
+              onClick={() => setShowModal(true)}
+              className="flex items-center gap-2 bg-[#BA7517] hover:bg-[#a36414] text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+            >
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+              Добавить кандидата
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-[1fr_260px] gap-6 mb-8">
@@ -368,6 +419,33 @@ export default function VacancyDetailPage() {
 
       {showModal && (
         <AddCandidateModal vacancyId={id} onClose={() => setShowModal(false)} onAdded={() => { setShowModal(false); load(); }} />
+      )}
+
+      {showEditModal && vacancy && (
+        <EditVacancyModal
+          vacancy={vacancy}
+          onClose={() => setShowEditModal(false)}
+          onSaved={(updated) => {
+            setVacancy((v) => v ? { ...v, ...updated } : v);
+            setShowEditModal(false);
+          }}
+        />
+      )}
+
+      {showPublishModal && vacancy && (
+        <PublishVacancyModal
+          vacancyTitle={vacancy.title}
+          salaryFrom={vacancy.salaryFrom}
+          salaryTo={vacancy.salaryTo}
+          location={vacancy.location}
+          remote={vacancy.remote}
+          description={vacancy.description}
+          requirements={vacancy.requirements}
+          recruiterName={vacancy.recruiter?.name ?? null}
+          recruiterEmail={vacancy.recruiter?.email ?? null}
+          recruiterTelegram={vacancy.recruiter?.telegramUsername ?? null}
+          onClose={() => setShowPublishModal(false)}
+        />
       )}
     </>
   );

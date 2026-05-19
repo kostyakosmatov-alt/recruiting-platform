@@ -21,7 +21,7 @@ export async function GET() {
       where: { role: { in: ["RECRUITER", "ADMIN"] } },
       select: {
         id: true, name: true, email: true,
-        role: true, isActive: true, createdAt: true,
+        role: true, isActive: true, createdAt: true, telegramUsername: true,
       },
       orderBy: { createdAt: "asc" },
     });

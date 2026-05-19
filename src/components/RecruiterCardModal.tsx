@@ -9,6 +9,7 @@ type RecruiterDetail = {
   role: string;
   isActive: boolean;
   createdAt: string;
+  telegramUsername: string | null;
   openVacancies: number;
   totalClients: number;
   hiredLast30Days: number;
@@ -38,6 +39,7 @@ export default function RecruiterCardModal({
   onUpdated: (updated: RecruiterDetail) => void;
 }) {
   const [name, setName] = useState(user.name);
+  const [telegram, setTelegram] = useState(user.telegramUsername ?? "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -57,7 +59,7 @@ export default function RecruiterCardModal({
     setSaving(true);
     setError("");
     try {
-      const body: Record<string, string> = { name };
+      const body: Record<string, string> = { name, telegramUsername: telegram };
       if (password) body.password = password;
 
       const res = await fetch(`/api/admin/users/${user.id}`, {
@@ -66,13 +68,19 @@ export default function RecruiterCardModal({
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const d = await res.json();
-        setError(d.error ?? "Ошибка сохранения");
+        try {
+          const d = await res.json();
+          setError(d.error ?? `Ошибка ${res.status}`);
+        } catch {
+          setError(`Ошибка сервера ${res.status}`);
+        }
         return;
       }
       const updated = await res.json();
       setPassword("");
       onUpdated({ ...user, ...updated });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка сохранения");
     } finally {
       setSaving(false);
     }
@@ -99,7 +107,7 @@ export default function RecruiterCardModal({
     }
   }
 
-  const isDirty = name !== user.name || password.length > 0;
+  const isDirty = name !== user.name || telegram !== (user.telegramUsername ?? "") || password.length > 0;
 
   return (
     <div
@@ -157,6 +165,21 @@ export default function RecruiterCardModal({
               onChange={(e) => setName(e.target.value)}
               className="w-full bg-[#151923] border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-[#EF9F27]/50 transition-colors"
             />
+          </div>
+
+          <div>
+            <label className="text-xs text-slate-500 mb-1.5 block">Telegram</label>
+            <div className="relative">
+              <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} className="text-slate-500 text-sm">@</span>
+              <input
+                type="text"
+                value={telegram}
+                onChange={(e) => setTelegram(e.target.value.replace(/^@/, ""))}
+                placeholder="username"
+                style={{ paddingLeft: 28 }}
+                className="w-full bg-[#151923] border border-white/10 rounded-lg pr-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-[#EF9F27]/50 transition-colors"
+              />
+            </div>
           </div>
 
           <div>

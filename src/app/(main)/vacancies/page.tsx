@@ -11,6 +11,8 @@ type Vacancy = {
   priority: string;
   salaryFrom: number | null;
   salaryTo: number | null;
+  commissionType: string;
+  commissionValue: number;
   client: { name: string };
   recruiter: { id: string; name: string } | null;
   _count?: { applications: number };
@@ -38,6 +40,15 @@ function formatSalary(from: number | null, to: number | null) {
   if (from && to) return `${fmt(from)} – ${fmt(to)} ₽`;
   if (from) return `от ${fmt(from)} ₽`;
   return `до ${fmt(to!)} ₽`;
+}
+
+const fmtRub = new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 });
+
+function formatCommission(type: string, value: number, salaryTo: number | null): string {
+  if (!value) return "—";
+  if (type === "FIXED") return fmtRub.format(value);
+  if (!salaryTo) return `${value}%`;
+  return fmtRub.format((value / 100) * salaryTo * 12);
 }
 
 export default function VacanciesPage() {
@@ -86,6 +97,7 @@ export default function VacanciesPage() {
                 <div className="w-36 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Статус</div>
                 <div className="w-24 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Приоритет</div>
                 <div className="w-36 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Зарплата</div>
+                <div className="w-36 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Комиссия</div>
               </div>
             </div>
           )}
@@ -136,6 +148,9 @@ export default function VacanciesPage() {
                 </div>
                 <div className="w-36 text-right text-xs text-slate-400">
                   {formatSalary(v.salaryFrom, v.salaryTo)}
+                </div>
+                <div className="w-36 text-right text-xs font-medium text-[#EF9F27]">
+                  {formatCommission(v.commissionType, v.commissionValue, v.salaryTo)}
                 </div>
               </div>
             </div>

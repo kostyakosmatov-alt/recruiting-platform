@@ -11,6 +11,7 @@ type User = {
   role: string;
   isActive: boolean;
   createdAt: string;
+  telegramUsername: string | null;
   openVacancies: number;
   totalClients: number;
   hiredLast30Days: number;
@@ -83,6 +84,7 @@ export default function AdminUsersPage() {
           {!loading && users.length > 0 && (
             <div className="flex items-center px-5 py-2.5 border-b border-white/5">
               <div className="flex-1 min-w-0 text-xs font-medium text-slate-500 uppercase tracking-wider">Имя</div>
+              <div style={{width:140,flexShrink:0}} className="text-xs font-medium text-slate-500 uppercase tracking-wider">Telegram</div>
               <div style={{width:208,flexShrink:0}} className="text-xs font-medium text-slate-500 uppercase tracking-wider">Email</div>
               <div style={{width:140,flexShrink:0}} className="text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Роль</div>
               <div style={{width:80,flexShrink:0}} className="text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Вакансий</div>
@@ -115,6 +117,12 @@ export default function AdminUsersPage() {
                 <div className="text-xs text-slate-500 mt-0.5">
                   {new Date(user.createdAt).toLocaleDateString("ru-RU")}
                 </div>
+              </div>
+              <div style={{width:140,flexShrink:0}} className="text-sm truncate">
+                {user.telegramUsername
+                  ? <span className="text-slate-300">@{user.telegramUsername}</span>
+                  : <span className="text-slate-600">—</span>
+                }
               </div>
               <div style={{width:208,flexShrink:0}} className="text-sm text-slate-400 truncate">{user.email}</div>
               <div style={{width:140,flexShrink:0}} className="flex justify-center">

@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { title, description, clientId, salaryFrom, salaryTo, status, priority } = body;
+  const { title, description, clientId, salaryFrom, salaryTo, status, priority, commissionType, commissionValue } = body;
 
   if (!title || !clientId) {
     return NextResponse.json({ error: "title и clientId обязательны" }, { status: 400 });
@@ -38,8 +38,8 @@ export async function POST(req: NextRequest) {
   const isAdmin = session.user.role === "ADMIN";
   const recruiterId = (isAdmin && body.recruiterId) ? body.recruiterId : session.user.id;
 
-  // team = chosen recruiter + current user (if different)
-  const teamIds = Array.from(new Set([recruiterId, session.user.id]));
+  // team = chosen recruiter only; don't auto-add admin
+  const teamIds = isAdmin ? [recruiterId] : Array.from(new Set([recruiterId, session.user.id]));
 
   const vacancy = await prisma.vacancy.create({
     data: {
@@ -50,6 +50,8 @@ export async function POST(req: NextRequest) {
       salaryTo: salaryTo ? Number(salaryTo) : null,
       status: status || "OPEN",
       priority: priority || "MEDIUM",
+      commissionType: commissionType || "FIXED",
+      commissionValue: commissionValue ? Number(commissionValue) : 0,
       recruiterId,
       teamRecruiters: { connect: teamIds.map((id) => ({ id })) },
     },

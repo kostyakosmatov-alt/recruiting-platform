@@ -19,7 +19,7 @@ export async function GET(
   const { id } = await params;
   const user = await prisma.user.findUnique({
     where: { id },
-    select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
+    select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true, telegramUsername: true },
   });
 
   if (!user) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -35,7 +35,7 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await req.json();
-  const { isActive, name, password } = body;
+  const { isActive, name, password, telegramUsername } = body;
 
   if (isActive !== undefined) {
     const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
@@ -48,12 +48,17 @@ export async function PATCH(
   if (isActive !== undefined) data.isActive = isActive;
   if (name?.trim()) data.name = name.trim();
   if (password) data.password = await bcrypt.hash(password, 12);
+  if (telegramUsername !== undefined) data.telegramUsername = telegramUsername?.trim().replace(/^@/, "") || null;
 
-  const user = await prisma.user.update({
-    where: { id },
-    data,
-    select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
-  });
-
-  return NextResponse.json(user);
+  try {
+    const user = await prisma.user.update({
+      where: { id },
+      data,
+      select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true, telegramUsername: true },
+    });
+    return NextResponse.json(user);
+  } catch (e) {
+    console.error("PATCH /api/admin/users/[id] error:", e);
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
 }

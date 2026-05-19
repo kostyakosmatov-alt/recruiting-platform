@@ -78,7 +78,7 @@ export async function GET() {
     if (isAdmin) {
       // Fetch recruiters without filtered _count (simpler, more compatible)
       const recruiters = await prisma.user.findMany({
-        where: { isActive: true },
+        where: { isActive: true, role: "RECRUITER" },
         select: { id: true, name: true, email: true, role: true },
         orderBy: { createdAt: "asc" },
       });

@@ -13,9 +13,10 @@ model User {
   password  String
   name      String
   role      Role     @default(RECRUITER)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isActive          Boolean  @default(true)
+  telegramUsername  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   candidates    Candidate[]
   vacancies     Vacancy[]     @relation("VacancyOwner")
@@ -59,20 +60,27 @@ enum ClientStatus {
 }
 
 // ── ВАКАНСИИ ──────────────────────────────────
+enum CommissionType {
+  FIXED
+  PERCENTAGE
+}
+
 model Vacancy {
-  id           String        @id @default(cuid())
-  title        String
-  description  String?
-  requirements String?
-  salaryFrom   Int?
-  salaryTo     Int?
-  currency     String        @default("RUB")
-  location     String?
-  remote       Boolean       @default(false)
-  status       VacancyStatus @default(OPEN)
-  priority     Priority      @default(MEDIUM)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id              String         @id @default(cuid())
+  title           String
+  description     String?
+  requirements    String?
+  salaryFrom      Int?
+  salaryTo        Int?
+  currency        String         @default("RUB")
+  location        String?
+  remote          Boolean        @default(false)
+  status          VacancyStatus  @default(OPEN)
+  priority        Priority       @default(MEDIUM)
+  commissionType  CommissionType @default(FIXED)
+  commissionValue Float          @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   clientId       String
   client         Client @relation(fields: [clientId], references: [id])
