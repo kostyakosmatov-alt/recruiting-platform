@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@supabase/supabase-js";
-import pdf from "pdf-parse";
 import mammoth from "mammoth";
 
 const supabase = createClient(
@@ -14,7 +13,10 @@ type Message = { role: "user" | "assistant"; content: string };
 
 async function extractText(buffer: Buffer, mimeType: string): Promise<string> {
   if (mimeType === "application/pdf") {
-    const data = await pdf(buffer);
+    // Dynamic require to avoid Turbopack ESM/CJS conflict
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
+    const data = await pdfParse(buffer);
     return data.text.slice(0, 8000);
   }
   if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
