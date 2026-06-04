@@ -19,6 +19,8 @@ type IntakeSessionRow = {
   id: string;
   token: string;
   status: string;
+  channel: string;
+  contactName: string | null;
   createdAt: string;
   vacancyId: string | null;
 };
@@ -130,7 +132,9 @@ export default function ClientDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
   const [creatingIntake, setCreatingIntake] = useState(false);
-  const [intakeUrl, setIntakeUrl] = useState<string | null>(null);
+  const [intakeToken, setIntakeToken] = useState<string | null>(null);
+  const [copiedWeb, setCopiedWeb] = useState(false);
+  const [copiedTg, setCopiedTg] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -155,10 +159,10 @@ export default function ClientDetailPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setIntakeUrl(data.url);
+        setIntakeToken(data.token);
         setClient((c) => c ? {
           ...c,
-          intakeSessions: [{ id: data.token, token: data.token, status: "PENDING", createdAt: new Date().toISOString(), vacancyId: null }, ...c.intakeSessions],
+          intakeSessions: [{ id: data.token, token: data.token, status: "PENDING", channel: "WEB", contactName: null, createdAt: new Date().toISOString(), vacancyId: null }, ...c.intakeSessions],
         } : c);
       }
     } finally {
@@ -304,20 +308,38 @@ export default function ClientDetailPage() {
                 </button>
               </div>
 
-              {intakeUrl && (
-                <div className="px-5 py-3 border-b border-white/5 bg-[#EF9F27]/5">
-                  <div className="text-xs text-slate-400 mb-1.5">Ссылка создана — отправьте заказчику:</div>
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 text-xs text-[#EF9F27] bg-black/30 rounded px-2 py-1.5 truncate">{intakeUrl}</code>
-                    <button
-                      onClick={() => { navigator.clipboard.writeText(intakeUrl); }}
-                      className="text-xs px-2.5 py-1.5 rounded bg-[#EF9F27]/15 text-[#EF9F27] hover:bg-[#EF9F27]/25 transition-colors whitespace-nowrap"
-                    >
-                      Копировать
-                    </button>
+              {intakeToken && (() => {
+                const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+                const webUrl = `${appUrl}/intake/${intakeToken}`;
+                const tgUrl = `https://t.me/${process.env.NEXT_PUBLIC_TG_BOT_USERNAME || "CTB_intake_bot"}?start=${intakeToken}`;
+                return (
+                  <div className="px-5 py-4 border-b border-white/5 bg-[#EF9F27]/5 space-y-3">
+                    <div className="text-xs text-slate-400">Брифинг создан — выберите способ отправки заказчику:</div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500 w-6">🌐</span>
+                        <code className="flex-1 text-xs text-[#EF9F27] bg-black/30 rounded px-2 py-1.5 truncate">{webUrl}</code>
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(webUrl); setCopiedWeb(true); setTimeout(() => setCopiedWeb(false), 2000); }}
+                          className="text-xs px-2.5 py-1.5 rounded bg-[#EF9F27]/15 text-[#EF9F27] hover:bg-[#EF9F27]/25 transition-colors whitespace-nowrap"
+                        >
+                          {copiedWeb ? "✓" : "Копировать"}
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500 w-6">✈️</span>
+                        <code className="flex-1 text-xs text-blue-400 bg-black/30 rounded px-2 py-1.5 truncate">{tgUrl}</code>
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(tgUrl); setCopiedTg(true); setTimeout(() => setCopiedTg(false), 2000); }}
+                          className="text-xs px-2.5 py-1.5 rounded bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 transition-colors whitespace-nowrap"
+                        >
+                          {copiedTg ? "✓" : "Копировать"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {(client.intakeSessions || []).length === 0 ? (
                 <div className="py-10 text-center">
@@ -327,9 +349,15 @@ export default function ClientDetailPage() {
                 (client.intakeSessions || []).map((s) => (
                   <div key={s.id} className="flex items-center justify-between px-5 py-3.5 border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
                     <div className="flex items-center gap-3">
+                      <span className="text-sm" title={s.channel === "TELEGRAM" ? "Telegram" : "Веб"}>
+                        {s.channel === "TELEGRAM" ? "✈️" : "🌐"}
+                      </span>
                       <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${INTAKE_STATUS_COLOR[s.status] ?? "bg-slate-500/15 text-slate-400"}`}>
                         {INTAKE_STATUS_LABEL[s.status] ?? s.status}
                       </span>
+                      {s.contactName && (
+                        <span className="text-xs text-slate-400">{s.contactName}</span>
+                      )}
                       <span className="text-xs text-slate-500">
                         {new Date(s.createdAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}
                       </span>
@@ -342,17 +370,19 @@ export default function ClientDetailPage() {
                         </button>
                       )}
                     </div>
-                    <a
-                      href={`/intake/${s.token}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1"
-                    >
-                      <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                      Открыть
-                    </a>
+                    {s.channel !== "TELEGRAM" && (
+                      <a
+                        href={`/intake/${s.token}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1"
+                      >
+                        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                        Открыть
+                      </a>
+                    )}
                   </div>
                 ))
               )}

@@ -28,7 +28,7 @@ export async function GET(
       },
       intakeSessions: {
         orderBy: { createdAt: "desc" },
-        select: { id: true, token: true, status: true, createdAt: true, vacancyId: true },
+        select: { id: true, token: true, status: true, channel: true, contactName: true, createdAt: true, vacancyId: true },
       },
     },
   });

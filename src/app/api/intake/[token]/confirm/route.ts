@@ -1,87 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/auth";
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-type Message = { role: "user" | "assistant"; content: string };
+import { confirmIntakeSession } from "@/lib/intake-confirm";
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params;
-  const session = await prisma.intakeSession.findUnique({
-    where: { token },
-    include: { client: true },
-  });
+  const session = await prisma.intakeSession.findUnique({ where: { token } });
   if (!session) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const messages = (session.messages as Message[]) || [];
-  const transcript = messages.map(m => `${m.role === "user" ? "Заказчик" : "HR"}: ${m.content}`).join("\n\n");
-
-  // Генерируем структурированные данные вакансии
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1024,
-    messages: [{
-      role: "user",
-      content: `На основе следующего интервью с заказчиком верни ТОЛЬКО валидный JSON (без markdown, без пояснений) для создания вакансии:
-
-${transcript}
-
-JSON должен иметь структуру:
-{
-  "title": string,
-  "description": string,
-  "requirements": string,
-  "salaryFrom": number | null,
-  "salaryTo": number | null,
-  "location": string | null,
-  "remote": boolean
-}`,
-    }],
-  });
-
-  const raw = response.content[0].type === "text" ? response.content[0].text : "{}";
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return NextResponse.json({ error: "Failed to parse AI response" }, { status: 500 });
-
-  let vacancyData: {
-    title: string; description: string; requirements: string;
-    salaryFrom: number | null; salaryTo: number | null;
-    location: string | null; remote: boolean;
-  };
   try {
-    vacancyData = JSON.parse(jsonMatch[0]);
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON from AI" }, { status: 500 });
+    const { vacancyId } = await confirmIntakeSession(token);
+    return NextResponse.json({ vacancyId });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
-
-  // Находим рекрутера — берём первого администратора
-  const adminUser = await prisma.user.findFirst({ where: { role: "ADMIN" } });
-  if (!adminUser) return NextResponse.json({ error: "No admin user found" }, { status: 500 });
-
-  const vacancy = await prisma.vacancy.create({
-    data: {
-      title: vacancyData.title || "Вакансия из брифинга",
-      description: vacancyData.description || null,
-      requirements: vacancyData.requirements || null,
-      salaryFrom: vacancyData.salaryFrom ? Math.round(vacancyData.salaryFrom) : null,
-      salaryTo: vacancyData.salaryTo ? Math.round(vacancyData.salaryTo) : null,
-      location: vacancyData.location || null,
-      remote: vacancyData.remote ?? false,
-      clientId: session.clientId,
-      recruiterId: adminUser.id,
-      teamRecruiters: { connect: { id: adminUser.id } },
-    },
-  });
-
-  await prisma.intakeSession.update({
-    where: { token },
-    data: { status: "COMPLETED", vacancyId: vacancy.id },
-  });
-
-  return NextResponse.json({ vacancyId: vacancy.id });
 }
