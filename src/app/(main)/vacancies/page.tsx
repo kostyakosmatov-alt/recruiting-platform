@@ -1,10 +1,7 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 import CreateVacancyModal from "@/components/CreateVacancyModal";
 
 type Vacancy = {
@@ -201,9 +198,7 @@ function DraftCard({ draft, users, onPublished }: {
 
 export default function VacanciesPage() {
   const router = useRouter();
-  const { data: authSession } = useSession();
-  const isAdmin = authSession?.user?.role === "ADMIN";
-
+  const [isAdmin, setIsAdmin] = useState(false);
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [drafts, setDrafts] = useState<DraftVacancy[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -213,22 +208,24 @@ export default function VacanciesPage() {
   async function load() {
     setLoading(true);
     try {
-      const [vData, dData, uData] = await Promise.all([
+      const [vData, draftsRes, uData] = await Promise.all([
         fetch("/api/vacancies").then((r) => r.json()),
-        isAdmin ? fetch("/api/vacancies/drafts").then((r) => r.json()) : Promise.resolve([]),
-        isAdmin ? fetch("/api/users").then((r) => r.json()) : Promise.resolve([]),
+        fetch("/api/vacancies/drafts"),
+        fetch("/api/users").then((r) => r.json()),
       ]);
       setVacancies(Array.isArray(vData) ? vData : []);
-      setDrafts(Array.isArray(dData) ? dData : []);
+      if (draftsRes.ok) {
+        const dData = await draftsRes.json();
+        setDrafts(Array.isArray(dData) ? dData : []);
+        setIsAdmin(true);
+      }
       setUsers(Array.isArray(uData) ? uData : []);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    if (authSession !== undefined) load();
-  }, [authSession]);
+  useEffect(() => { load(); }, []);
 
   return (
     <>
