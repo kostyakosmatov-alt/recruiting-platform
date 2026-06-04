@@ -11,8 +11,8 @@ export async function GET() {
 
   const vacancies = await prisma.vacancy.findMany({
     where: isAdmin
-      ? undefined
-      : { OR: [{ recruiterId: userId }, { teamRecruiters: { some: { id: userId } } }] },
+      ? { NOT: { status: "DRAFT" } }
+      : { NOT: { status: "DRAFT" }, OR: [{ recruiterId: userId }, { teamRecruiters: { some: { id: userId } } }] },
     include: {
       client: { select: { name: true } },
       recruiter: { select: { id: true, name: true } },

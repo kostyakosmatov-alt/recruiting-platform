@@ -61,6 +61,7 @@ JSON должен иметь структуру:
       salaryTo: vacancyData.salaryTo ? Math.round(vacancyData.salaryTo) : null,
       location: vacancyData.location || null,
       remote: vacancyData.remote ?? false,
+      status: "DRAFT",
       clientId: session.clientId,
       recruiterId: adminUser.id,
       teamRecruiters: { connect: { id: adminUser.id } },

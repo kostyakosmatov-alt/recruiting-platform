@@ -95,6 +95,7 @@ model Vacancy {
 }
 
 enum VacancyStatus {
+  DRAFT
   OPEN
   ON_HOLD
   CLOSED
