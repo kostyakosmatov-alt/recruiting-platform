@@ -12,6 +12,8 @@ type Candidate = {
 };
 type Application = { id: string; stage: string; createdAt: string; candidate: Candidate };
 type Recruiter = { id: string; name: string; email?: string; telegramUsername?: string | null; role?: string };
+type ChatMessage = { role: "user" | "assistant"; content: string };
+type IntakeSessionSummary = { id: string; token: string; messages: ChatMessage[]; files: { name: string }[]; createdAt: string };
 type Vacancy = {
   id: string; title: string; description: string | null;
   requirements: string | null; location: string | null; remote: boolean;
@@ -22,6 +24,7 @@ type Vacancy = {
   recruiter: Recruiter | null;
   teamRecruiters: Recruiter[];
   applications: Application[];
+  intakeSessions: IntakeSessionSummary[];
 };
 
 const STAGES = [
@@ -239,6 +242,100 @@ function TeamSection({ vacancyId, recruiter, team, onUpdate }: {
   );
 }
 
+function IntakeTranscript({ session }: { session: IntakeSessionSummary }) {
+  const [open, setOpen] = useState(false);
+  const messages = (session.messages || []).filter((m) => !m.content.includes("INTERVIEW_COMPLETE"));
+
+  return (
+    <div className="bg-[#151923] border border-white/5 rounded-xl overflow-hidden mt-6">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/[0.02] transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-7 h-7 rounded-lg bg-[#EF9F27]/15 flex items-center justify-center shrink-0">
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#EF9F27" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+          </div>
+          <div className="text-left">
+            <div className="text-sm font-medium text-white">Переписка с заказчиком</div>
+            <div className="text-xs text-slate-500 mt-0.5">
+              {messages.length} сообщений · {new Date(session.createdAt).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}
+              {session.files.length > 0 && ` · ${session.files.length} файл${session.files.length > 1 ? "а" : ""}`}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <a
+            href={`/intake/${session.token}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-xs text-slate-500 hover:text-[#EF9F27] transition-colors flex items-center gap-1"
+          >
+            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            Открыть портал
+          </a>
+          <svg
+            width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+            className={`text-slate-500 transition-transform ${open ? "rotate-180" : ""}`}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+
+      {open && (
+        <div className="border-t border-white/5 px-5 py-5 space-y-3 max-h-[500px] overflow-y-auto">
+          {session.files.length > 0 && (
+            <div className="flex flex-wrap gap-2 pb-3 border-b border-white/5">
+              {session.files.map((f, i) => (
+                <span key={i} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-[#EF9F27]/10 text-[#EF9F27]">
+                  <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  {f.name}
+                </span>
+              ))}
+            </div>
+          )}
+          {messages.map((msg, i) => {
+            const isUser = msg.role === "user";
+            return (
+              <div key={i} className={`flex gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}>
+                {!isUser && (
+                  <div className="w-7 h-7 rounded-full shrink-0 mt-0.5 flex items-center justify-center" style={{ background: "linear-gradient(135deg, #BA7517, #EF9F27)" }}>
+                    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                )}
+                <div
+                  className={`max-w-[70%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                    isUser
+                      ? "bg-[#EF9F27]/20 text-white rounded-tr-sm"
+                      : "bg-[#0f1117] border border-white/6 text-slate-300 rounded-tl-sm"
+                  }`}
+                >
+                  {msg.content.replace(/\*\*([^*]+)\*\*/g, "$1")}
+                </div>
+                {isUser && (
+                  <div className="w-7 h-7 rounded-full shrink-0 mt-0.5 bg-slate-700 flex items-center justify-center text-xs text-slate-300 font-medium">
+                    З
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function VacancyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -415,6 +512,10 @@ export default function VacancyDetailPage() {
             ))
           )}
         </div>
+
+        {vacancy.intakeSessions?.length > 0 && (
+          <IntakeTranscript session={vacancy.intakeSessions[0]} />
+        )}
       </div>
 
       {showModal && (

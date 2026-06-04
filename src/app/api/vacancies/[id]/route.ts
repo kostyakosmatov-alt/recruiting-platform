@@ -19,6 +19,11 @@ export async function GET(
       client: { select: { id: true, name: true } },
       recruiter: { select: { id: true, name: true, email: true, telegramUsername: true } },
       teamRecruiters: { select: { id: true, name: true } },
+      intakeSessions: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { id: true, token: true, messages: true, files: true, createdAt: true },
+      },
       applications: {
         include: {
           candidate: {
