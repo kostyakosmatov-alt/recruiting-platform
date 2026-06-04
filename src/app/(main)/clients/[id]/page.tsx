@@ -125,6 +125,46 @@ const INTAKE_STATUS_COLOR: Record<string, string> = {
   COMPLETED:   "bg-[#EF9F27]/15 text-[#EF9F27]",
 };
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "";
+const TG_BOT = process.env.NEXT_PUBLIC_TG_BOT_USERNAME || "CTB_intake_bot";
+
+function intakeLinks(token: string) {
+  return {
+    web: `${APP_URL}/intake/${token}`,
+    tg: `https://t.me/${TG_BOT}?start=${token}`,
+  };
+}
+
+function CopyLinks({ token }: { token: string }) {
+  const [copiedWeb, setCopiedWeb] = useState(false);
+  const [copiedTg, setCopiedTg] = useState(false);
+  const { web, tg } = intakeLinks(token);
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-slate-500 w-6">🌐</span>
+        <code className="flex-1 text-xs text-[#EF9F27] bg-black/30 rounded px-2 py-1.5 truncate">{web}</code>
+        <button
+          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(web); setCopiedWeb(true); setTimeout(() => setCopiedWeb(false), 2000); }}
+          className="text-xs px-2.5 py-1.5 rounded bg-[#EF9F27]/15 text-[#EF9F27] hover:bg-[#EF9F27]/25 transition-colors whitespace-nowrap"
+        >
+          {copiedWeb ? "✓" : "Копировать"}
+        </button>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-slate-500 w-6">✈️</span>
+        <code className="flex-1 text-xs text-blue-400 bg-black/30 rounded px-2 py-1.5 truncate">{tg}</code>
+        <button
+          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(tg); setCopiedTg(true); setTimeout(() => setCopiedTg(false), 2000); }}
+          className="text-xs px-2.5 py-1.5 rounded bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 transition-colors whitespace-nowrap"
+        >
+          {copiedTg ? "✓" : "Копировать"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -135,6 +175,8 @@ export default function ClientDetailPage() {
   const [intakeToken, setIntakeToken] = useState<string | null>(null);
   const [copiedWeb, setCopiedWeb] = useState(false);
   const [copiedTg, setCopiedTg] = useState(false);
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
+  const [deletingToken, setDeletingToken] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -148,6 +190,29 @@ export default function ClientDetailPage() {
   }
 
   useEffect(() => { load(); }, [id]);
+
+  function toggleSession(token: string) {
+    setExpandedSessions((prev) => {
+      const next = new Set(prev);
+      if (next.has(token)) next.delete(token);
+      else next.add(token);
+      return next;
+    });
+  }
+
+  async function deleteSession(token: string) {
+    if (!confirm("Удалить этот брифинг?")) return;
+    setDeletingToken(token);
+    try {
+      const res = await fetch(`/api/intake/${token}`, { method: "DELETE" });
+      if (res.ok) {
+        setClient((c) => c ? { ...c, intakeSessions: c.intakeSessions.filter((s) => s.token !== token) } : c);
+        if (intakeToken === token) setIntakeToken(null);
+      }
+    } finally {
+      setDeletingToken(null);
+    }
+  }
 
   async function createIntake() {
     setCreatingIntake(true);
@@ -346,45 +411,79 @@ export default function ClientDetailPage() {
                   <p className="text-slate-500 text-sm">Нет брифингов</p>
                 </div>
               ) : (
-                (client.intakeSessions || []).map((s) => (
-                  <div key={s.id} className="flex items-center justify-between px-5 py-3.5 border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm" title={s.channel === "TELEGRAM" ? "Telegram" : "Веб"}>
-                        {s.channel === "TELEGRAM" ? "✈️" : "🌐"}
-                      </span>
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${INTAKE_STATUS_COLOR[s.status] ?? "bg-slate-500/15 text-slate-400"}`}>
-                        {INTAKE_STATUS_LABEL[s.status] ?? s.status}
-                      </span>
-                      {s.contactName && (
-                        <span className="text-xs text-slate-400">{s.contactName}</span>
-                      )}
-                      <span className="text-xs text-slate-500">
-                        {new Date(s.createdAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}
-                      </span>
-                      {s.vacancyId && (
-                        <button
-                          onClick={() => router.push(`/vacancies/${s.vacancyId}`)}
-                          className="text-xs text-[#EF9F27] hover:underline"
-                        >
-                          → Вакансия
-                        </button>
+                (client.intakeSessions || []).map((s) => {
+                  const expanded = expandedSessions.has(s.token);
+                  const isDeleting = deletingToken === s.token;
+                  return (
+                    <div key={s.id} className="border-b border-white/5 last:border-0">
+                      <div
+                        onClick={() => toggleSession(s.token)}
+                        className="flex items-center justify-between px-5 py-3.5 hover:bg-white/[0.02] transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm" title={s.channel === "TELEGRAM" ? "Telegram" : "Веб"}>
+                            {s.channel === "TELEGRAM" ? "✈️" : "🌐"}
+                          </span>
+                          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${INTAKE_STATUS_COLOR[s.status] ?? "bg-slate-500/15 text-slate-400"}`}>
+                            {INTAKE_STATUS_LABEL[s.status] ?? s.status}
+                          </span>
+                          {s.contactName && (
+                            <span className="text-xs text-slate-400">{s.contactName}</span>
+                          )}
+                          <span className="text-xs text-slate-500">
+                            {new Date(s.createdAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}
+                          </span>
+                          {s.vacancyId && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); router.push(`/vacancies/${s.vacancyId}`); }}
+                              className="text-xs text-[#EF9F27] hover:underline"
+                            >
+                              → Вакансия
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); deleteSession(s.token); }}
+                            disabled={isDeleting}
+                            className="text-xs text-slate-600 hover:text-red-400 transition-colors disabled:opacity-50"
+                            title="Удалить брифинг"
+                          >
+                            {isDeleting ? "..." : (
+                              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            )}
+                          </button>
+                          <svg
+                            width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                            className={`text-slate-500 transition-transform ${expanded ? "rotate-180" : ""}`}
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </div>
+                      {expanded && (
+                        <div className="px-5 pb-4 bg-black/10">
+                          <CopyLinks token={s.token} />
+                          {s.channel !== "TELEGRAM" && (
+                            <a
+                              href={`/intake/${s.token}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-2 inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                            >
+                              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                              Открыть чат
+                            </a>
+                          )}
+                        </div>
                       )}
                     </div>
-                    {s.channel !== "TELEGRAM" && (
-                      <a
-                        href={`/intake/${s.token}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1"
-                      >
-                        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                        Открыть
-                      </a>
-                    )}
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

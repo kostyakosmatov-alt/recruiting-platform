@@ -47,31 +47,33 @@ async function askClaude(messages: Message[], fileContext: string): Promise<stri
   return response.content[0].type === "text" ? response.content[0].text : "";
 }
 
-async function transcribeVoice(chatId: number, messageId: number): Promise<string | null> {
-  // Запрашиваем транскрипцию у Telegram
-  const res = await fetch(`${TG_API}/transcribeAudio`, {
+async function requestTranscription(chatId: number, messageId: number): Promise<void> {
+  await fetch(`${TG_API}/transcribeAudio`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
   });
-  const data = await res.json() as { ok: boolean; result?: { text?: string; is_final?: boolean } };
-  if (!data.ok || !data.result) return null;
-  if (data.result.text && data.result.is_final) return data.result.text;
+}
 
-  // Если не готово — поллим до 8 секунд (Vercel timeout < 10s)
-  for (let i = 0; i < 8; i++) {
-    await new Promise((r) => setTimeout(r, 1000));
-    const poll = await fetch(`${TG_API}/transcribeAudio`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
-    });
-    const pollData = await poll.json() as { ok: boolean; result?: { text?: string; is_final?: boolean } };
-    if (pollData.ok && pollData.result?.is_final && pollData.result.text) {
-      return pollData.result.text;
-    }
-  }
-  return null;
+async function handleVoiceTranscriptionResult(chatId: number, messageId: number, voiceText: string) {
+  const session = await prisma.intakeSession.findFirst({
+    where: { telegramChatId: String(chatId), status: "IN_PROGRESS" },
+  });
+  if (!session) return;
+
+  const messages = (session.messages as Message[]) || [];
+  const pendingKey = `__PENDING_VOICE__:${messageId}`;
+  const hasPending = messages.some((m) => m.role === "user" && m.content === pendingKey);
+  if (!hasPending) return;
+
+  const cleanedMessages = messages.filter((m) => !(m.role === "user" && m.content === pendingKey));
+  await prisma.intakeSession.update({
+    where: { id: session.id },
+    data: { messages: cleanedMessages },
+  });
+
+  await sendMessage(chatId, `_Распознано:_ "${voiceText}"`);
+  await handleText(chatId, voiceText);
 }
 
 function buildFileContext(files: IntakeFile[]): string {
@@ -277,6 +279,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    // Edited message — Telegram delivers voice transcription result this way
+    if (body.edited_message) {
+      const em = body.edited_message;
+      const voiceText = em.voice?.text ?? em.text;
+      if (em.chat?.id && voiceText && em.message_id) {
+        await handleVoiceTranscriptionResult(em.chat.id, em.message_id, voiceText);
+      }
+      return NextResponse.json({ ok: true });
+    }
+
     const message = body.message;
     if (!message) return NextResponse.json({ ok: true });
 
@@ -303,16 +315,24 @@ export async function POST(req: NextRequest) {
         await sendMessage(chatId, "🎤 Голосовые сообщения доступны только для Telegram Premium подписчиков. Пожалуйста, напишите текстом.");
         return NextResponse.json({ ok: true });
       }
-      // Premium: транскрибируем через Telegram
-      await sendMessage(chatId, "🎤 Транскрибирую голосовое сообщение...");
-      const text = await transcribeVoice(chatId, message.message_id);
-      if (!text) {
-        await sendMessage(chatId, "❌ Не удалось распознать голосовое сообщение. Попробуйте ещё раз или напишите текстом.");
+
+      const session = await prisma.intakeSession.findFirst({
+        where: { telegramChatId: String(chatId), status: "IN_PROGRESS" },
+      });
+      if (!session) {
+        await sendMessage(chatId, "Сначала перейдите по ссылке от рекрутера, чтобы начать брифинг.");
         return NextResponse.json({ ok: true });
       }
-      // Отправляем транскрипт обратно и обрабатываем как текст
-      await sendMessage(chatId, `_Распознано:_ "${text}"`);
-      await handleText(chatId, text);
+
+      // Store pending marker and kick off async transcription
+      const pendingMarker: Message = { role: "user", content: `__PENDING_VOICE__:${message.message_id}` };
+      const existingMessages = (session.messages as Message[]) || [];
+      await prisma.intakeSession.update({
+        where: { id: session.id },
+        data: { messages: [...existingMessages, pendingMarker] },
+      });
+      await sendMessage(chatId, "🎤 Обрабатываю голосовое сообщение...");
+      await requestTranscription(chatId, message.message_id);
       return NextResponse.json({ ok: true });
     }
 
