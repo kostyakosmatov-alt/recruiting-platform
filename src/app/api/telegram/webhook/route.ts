@@ -47,12 +47,25 @@ async function askClaude(messages: Message[], fileContext: string): Promise<stri
   return response.content[0].type === "text" ? response.content[0].text : "";
 }
 
-async function requestTranscription(chatId: number, messageId: number): Promise<void> {
-  await fetch(`${TG_API}/transcribeAudio`, {
+async function requestTranscription(chatId: number, messageId: number): Promise<string | null> {
+  const res = await fetch(`${TG_API}/transcribeAudio`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
   });
+  const data = await res.json() as { ok: boolean; result?: { text?: string; is_final?: boolean } };
+  if (!data.ok) return null;
+  if (data.result?.is_final && data.result.text) return data.result.text;
+  // Poll once more after 3s for short voice messages
+  await new Promise((r) => setTimeout(r, 3000));
+  const poll = await fetch(`${TG_API}/transcribeAudio`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
+  });
+  const pollData = await poll.json() as { ok: boolean; result?: { text?: string; is_final?: boolean } };
+  if (pollData.ok && pollData.result?.is_final && pollData.result.text) return pollData.result.text;
+  return null;
 }
 
 async function handleVoiceTranscriptionResult(chatId: number, messageId: number, voiceText: string) {
@@ -324,15 +337,22 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Store pending marker and kick off async transcription
+      await sendMessage(chatId, "🎤 Обрабатываю голосовое сообщение...");
+
+      // Store pending marker in case transcription is async (edited_message)
       const pendingMarker: Message = { role: "user", content: `__PENDING_VOICE__:${message.message_id}` };
       const existingMessages = (session.messages as Message[]) || [];
       await prisma.intakeSession.update({
         where: { id: session.id },
         data: { messages: [...existingMessages, pendingMarker] },
       });
-      await sendMessage(chatId, "🎤 Обрабатываю голосовое сообщение...");
-      await requestTranscription(chatId, message.message_id);
+
+      const transcribedText = await requestTranscription(chatId, message.message_id);
+      if (transcribedText) {
+        // Got result synchronously — handle immediately
+        await handleVoiceTranscriptionResult(chatId, message.message_id, transcribedText);
+      }
+      // If null — wait for edited_message webhook from Telegram
       return NextResponse.json({ ok: true });
     }
 
