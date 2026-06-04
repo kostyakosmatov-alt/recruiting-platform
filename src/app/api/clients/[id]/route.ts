@@ -26,6 +26,10 @@ export async function GET(
           },
         },
       },
+      intakeSessions: {
+        orderBy: { createdAt: "desc" },
+        select: { id: true, token: true, status: true, createdAt: true, vacancyId: true },
+      },
     },
   });
 

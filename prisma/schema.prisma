@@ -49,8 +49,9 @@ model Client {
   recruiterId String?
   recruiter   User?    @relation(fields: [recruiterId], references: [id])
 
-  vacancies Vacancy[]
-  notes     Note[]
+  vacancies       Vacancy[]
+  notes           Note[]
+  intakeSessions  IntakeSession[]
 }
 
 enum ClientStatus {
@@ -88,8 +89,9 @@ model Vacancy {
   recruiter      User   @relation("VacancyOwner", fields: [recruiterId], references: [id])
   teamRecruiters User[] @relation("VacancyTeam")
 
-  applications Application[]
-  notes        Note[]
+  applications   Application[]
+  notes          Note[]
+  intakeSessions IntakeSession[]
 }
 
 enum VacancyStatus {
@@ -189,6 +191,21 @@ enum ApplicationResult {
   REJECTED_BY_CLIENT
   REJECTED_BY_CANDIDATE
   GHOSTED
+}
+
+// ── INTAKE СЕССИИ ─────────────────────────────
+model IntakeSession {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+  status    String   @default("PENDING")
+  messages  Json     @default("[]")
+  files     Json     @default("[]")
+  vacancyId String?
+  vacancy   Vacancy? @relation(fields: [vacancyId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ── ЗАМЕТКИ ───────────────────────────────────

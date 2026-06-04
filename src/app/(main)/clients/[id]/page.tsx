@@ -15,6 +15,14 @@ type VacancyRow = {
 
 type Recruiter = { id: string; name: string };
 
+type IntakeSessionRow = {
+  id: string;
+  token: string;
+  status: string;
+  createdAt: string;
+  vacancyId: string | null;
+};
+
 type Client = {
   id: string;
   name: string;
@@ -25,6 +33,7 @@ type Client = {
   createdAt: string;
   recruiter: Recruiter | null;
   vacancies: VacancyRow[];
+  intakeSessions: IntakeSessionRow[];
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -103,13 +112,25 @@ function RecruiterSelect({
   );
 }
 
+const INTAKE_STATUS_LABEL: Record<string, string> = {
+  PENDING: "Ожидает",
+  IN_PROGRESS: "В процессе",
+  COMPLETED: "Завершён",
+};
+const INTAKE_STATUS_COLOR: Record<string, string> = {
+  PENDING:     "bg-slate-500/15 text-slate-400",
+  IN_PROGRESS: "bg-amber-500/15 text-amber-400",
+  COMPLETED:   "bg-[#EF9F27]/15 text-[#EF9F27]",
+};
+
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
+  const [creatingIntake, setCreatingIntake] = useState(false);
+  const [intakeUrl, setIntakeUrl] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -123,6 +144,27 @@ export default function ClientDetailPage() {
   }
 
   useEffect(() => { load(); }, [id]);
+
+  async function createIntake() {
+    setCreatingIntake(true);
+    try {
+      const res = await fetch("/api/intake/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIntakeUrl(data.url);
+        setClient((c) => c ? {
+          ...c,
+          intakeSessions: [{ id: data.token, token: data.token, status: "PENDING", createdAt: new Date().toISOString(), vacancyId: null }, ...c.intakeSessions],
+        } : c);
+      }
+    } finally {
+      setCreatingIntake(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -194,7 +236,7 @@ export default function ClientDetailPage() {
             </button>
           </div>
 
-          {/* Right: metrics + vacancies */}
+          {/* Right: metrics + vacancies + briefings */}
           <div className="space-y-5">
             <div className="grid grid-cols-4 gap-4">
               {[
@@ -241,6 +283,76 @@ export default function ClientDetailPage() {
                     </span>
                     <span className="text-sm text-slate-400">{v._count.applications}</span>
                     <span className="text-sm text-slate-400">{v.applications.length}</span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Briefings section */}
+            <div className="bg-[#151923] border border-white/5 rounded-xl overflow-hidden">
+              <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between">
+                <h2 className="text-sm font-medium text-white">Брифинги</h2>
+                <button
+                  onClick={createIntake}
+                  disabled={creatingIntake}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#EF9F27]/10 text-[#EF9F27] hover:bg-[#EF9F27]/20 transition-colors disabled:opacity-50"
+                >
+                  <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  {creatingIntake ? "Создаётся..." : "Новый брифинг"}
+                </button>
+              </div>
+
+              {intakeUrl && (
+                <div className="px-5 py-3 border-b border-white/5 bg-[#EF9F27]/5">
+                  <div className="text-xs text-slate-400 mb-1.5">Ссылка создана — отправьте заказчику:</div>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs text-[#EF9F27] bg-black/30 rounded px-2 py-1.5 truncate">{intakeUrl}</code>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(intakeUrl); }}
+                      className="text-xs px-2.5 py-1.5 rounded bg-[#EF9F27]/15 text-[#EF9F27] hover:bg-[#EF9F27]/25 transition-colors whitespace-nowrap"
+                    >
+                      Копировать
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {(client.intakeSessions || []).length === 0 ? (
+                <div className="py-10 text-center">
+                  <p className="text-slate-500 text-sm">Нет брифингов</p>
+                </div>
+              ) : (
+                (client.intakeSessions || []).map((s) => (
+                  <div key={s.id} className="flex items-center justify-between px-5 py-3.5 border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
+                    <div className="flex items-center gap-3">
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${INTAKE_STATUS_COLOR[s.status] ?? "bg-slate-500/15 text-slate-400"}`}>
+                        {INTAKE_STATUS_LABEL[s.status] ?? s.status}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {new Date(s.createdAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}
+                      </span>
+                      {s.vacancyId && (
+                        <button
+                          onClick={() => router.push(`/vacancies/${s.vacancyId}`)}
+                          className="text-xs text-[#EF9F27] hover:underline"
+                        >
+                          → Вакансия
+                        </button>
+                      )}
+                    </div>
+                    <a
+                      href={`/intake/${s.token}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1"
+                    >
+                      <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                      Открыть
+                    </a>
                   </div>
                 ))
               )}
